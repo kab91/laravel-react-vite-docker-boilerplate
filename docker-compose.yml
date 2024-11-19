@@ -1,0 +1,168 @@
+name: boilerplate-app
+services:
+  nginx:
+    build:
+      context: ./docker
+      dockerfile: nginx.dockerfile
+      args:
+        - UID=1000
+        - GID=1000
+        - USER=laravel
+    restart: unless-stopped
+    container_name: boilerplate-nginx
+    ports:
+      - "8081:8000"
+    volumes:
+      - ./app:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - php
+      - redis
+      - mysql
+      - laravel-queue
+      - laravel-cron
+    networks:
+      - boilerplate
+
+  php:
+    build:
+      context: ./docker
+      dockerfile: php.dockerfile
+      args:
+        - UID=1000
+        - GID=1000
+        - USER=laravel
+    container_name: boilerplate-php
+    restart: unless-stopped
+    ports:
+      - "9000"
+    volumes:
+      - ./app:/var/www/html
+      - ./docker/php/php.ini:/usr/local/etc/php/php.ini
+    networks:
+      - boilerplate
+
+  mysql:
+    image: mysql:8.0
+    container_name: boilerplate-mysql
+    restart: unless-stopped
+    tty: true
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    volumes:
+      - ./docker/mysql/data:/var/lib/mysql
+      - ./docker/mysql/conf/my.cnf:/etc/my.cnf
+    networks:
+      - boilerplate
+
+  redis:
+    image: redis:alpine
+    container_name: boilerplate-redis
+    restart: unless-stopped
+    command: redis-server --port 6379
+    networks:
+      - boilerplate
+
+  laravel-queue:
+    build:
+      context: ./docker
+      dockerfile: php.dockerfile
+      args:
+        - UID=1000
+        - GID=1000
+        - USER=laravel
+    container_name: boilerplate-laravel-queue
+    restart: unless-stopped
+    volumes:
+      - ./app:/var/www/html
+      - ./docker/php/php.ini:/usr/local/etc/php/php.ini
+    depends_on:
+      - mysql
+    working_dir: /var/www/html
+    entrypoint: [ 'php', '/var/www/html/artisan', 'queue:work' ]
+    networks:
+      - boilerplate
+
+  laravel-cron:
+    build:
+      context: ./docker
+      dockerfile: php.dockerfile
+      args:
+        - UID=1000
+        - GID=1000
+        - USER=laravel
+    container_name: boilerplate-laravel-cron
+    volumes:
+      - ./app:/var/www/html
+      - ./docker/php/php.ini:/usr/local/etc/php/php.ini
+    depends_on:
+      - mysql
+    working_dir: /var/www/html
+    entrypoint: [ 'php', '/var/www/html/artisan', 'schedule:work' ]
+    networks:
+      - boilerplate
+
+  composer:
+    build:
+      context: ./docker
+      dockerfile: composer.dockerfile
+      args:
+        - UID=1000
+        - GID=1000
+        - USER=laravel
+    container_name: boilerplate-composer
+    volumes:
+      - ./app:/var/www/html
+    working_dir: /var/www/html
+    depends_on:
+      - php
+    user: laravel
+    profiles: [ "composer" ]
+    entrypoint: [ 'composer', '--ignore-platform-reqs' ]
+    networks:
+      - boilerplate
+
+  artisan:
+    build:
+      context: ./docker
+      dockerfile: php.dockerfile
+      args:
+        - UID=1000
+        - GID=1000
+        - USER=laravel
+    container_name: boilerplate-artisan
+    volumes:
+      - ./app:/var/www/html
+      - ./docker/php/php.ini:/usr/local/etc/php/php.ini
+    depends_on:
+      - mysql
+    working_dir: /var/www/html
+    profiles: [ "artisan" ]
+    entrypoint: [ 'php', '/var/www/html/artisan' ]
+    networks:
+      - boilerplate
+
+  npm:
+    image: node:alpine
+    container_name: boilerplate-npm
+    volumes:
+      - ./app:/var/www/html
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    working_dir: /var/www/html
+    profiles: [ "npm" ]
+    entrypoint: [ 'npm' ]
+    networks:
+      - boilerplate
+
+networks:
+  boilerplate:
